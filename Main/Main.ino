@@ -2,7 +2,7 @@
 #include <PubSubClient.h>
 //#include <SoftwareSerial.h>
 
-const char* ssid = "dlink-M961-2.4G-6fa6";
+const char* ssid = "HUAWEI-4gNy";
 const char* password = "csffb76673";
 const char* mqtt_server = "broker.emqx.io";
 const int mqtt_port = 1883;
