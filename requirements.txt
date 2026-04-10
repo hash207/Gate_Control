@@ -1,3 +1,5 @@
+kivymd
+pyngrok
+paho-mqtt
 Flask==3.0.3
-paho-mqtt>=1.6.1,<2.0.0
 Flask-SQLAlchemy==3.1.1
