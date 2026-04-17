@@ -1,10 +1,13 @@
 import os
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from flask import Flask, request, jsonify, render_template_string
 from flask_sqlalchemy import SQLAlchemy
 import paho.mqtt.client as mqtt
 
 app = Flask(__name__)
+
+JORDAN_TZ = ZoneInfo("Asia/Amman")
 
 # Configure SQLite Database
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -16,7 +19,7 @@ db = SQLAlchemy(app)
 class Log(db.Model):
     __tablename__ = 'logs'
     id = db.Column(db.Integer, primary_key=True)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=lambda: datetime.now(JORDAN_TZ))
     action = db.Column(db.String(255), nullable=False)
     source = db.Column(db.String(255), nullable=False)
 
