@@ -1,6 +1,8 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
-//#include <SoftwareSerial.h>
+#include <esp_task_wdt.h>
+
+#define WDT_TIMEOUT 15
 
 const char* ssid = "HUAWEI-4gNy";
 const char* password = "csffb76673";
@@ -13,14 +15,8 @@ const int RELAY_PIN = 21;
 WiFiClient espClient;
 PubSubClient client(espClient);
 
-// RX = D1 (GPIO 5) 
-// TX = D2 (GPIO 4)
-//SoftwareSerial arduino(D2, D3); // RX, TX
-
 void setup_wifi() {
-
   delay(10);
-  // We start by connecting to a WiFi network
   Serial.println();
   Serial.print("Connecting to ");
   Serial.println(ssid);
@@ -29,6 +25,7 @@ void setup_wifi() {
   WiFi.begin(ssid, password);
 
   while (WiFi.status() != WL_CONNECTED) {
+    esp_task_wdt_reset(); // تصفير المؤقت أثناء الانتظار
     delay(500);
     Serial.print(".");
     digitalWrite(WiFi_LED,  !digitalRead(WiFi_LED));
@@ -44,18 +41,14 @@ void setup_wifi() {
 }
 
 void trig(String message){
-  // إذا كانت الرسالة "toggle"
   if (message == "toggle") {
       Serial.println("Triggering relay pulse (Direct Active Low)...");
       
-      // 1. لتشغيل الريلاي: نحول المنفذ إلى مخرج ونعطيه صفر فولت (GND)
       pinMode(RELAY_PIN, OUTPUT);
       digitalWrite(RELAY_PIN, LOW); 
       
-      // 2. الانتظار لمدة نصف ثانية (النبضة)
       delay(500);           
       
-      // 3. لإطفاء الريلاي: نعيد المنفذ كـ "مدخل" ليطفو (يقطع التيار تماماً)
       pinMode(RELAY_PIN, INPUT);
       
       Serial.println("Relay pulse completed");
@@ -65,22 +58,23 @@ void trig(String message){
 }
 
 void callback(char* topic, byte* payload, unsigned int length) {
-  String message = "";
+  // استخدام مصفوفة أحرف ثابتة بدلاً من String لتفادي تشتت الذاكرة
+  char message[length + 1];
   for (int i = 0; i < length; i++) {
-    message += (char)payload[i];
+    message[i] = (char)payload[i];
   }
+  message[length] = '\0';
 
   trig(message);
 }
 
 void reconnect() {
-  // Loop until we're reconnected
   while (!client.connected()) {
+    esp_task_wdt_reset(); // تصفير المؤقت أثناء محاولة إعادة الاتصال
     Serial.print("Attempting MQTT connection...");
-    // Create a random client ID
     String clientId = "ESP8266Client-";
     clientId += String(random(0xffff), HEX);
-    // Attempt to connect
+    
     digitalWrite(MQTT_LED, !digitalRead(0));
     if (client.connect(clientId.c_str())) {
       Serial.println("connected");
@@ -91,7 +85,6 @@ void reconnect() {
       Serial.print("failed, rc=");
       Serial.print(client.state());
       Serial.println(" try again in 2 seconds");
-      // Wait 2 seconds before retrying
       delay(2000);
     }
   }
@@ -99,33 +92,36 @@ void reconnect() {
 
 String reciev(){
   String incomingMessage;
-  /*if (arduino.available() > 0) {
-    
-    // Read the incoming data until the newline character '\n'
-    // This captures the whole string sent by nodemcu.println()
-    incomingMessage += arduino.readStringUntil('\n');
-    Serial.println(incomingMessage);
-    client.publish("hash/Test", incomingMessage.c_str());
-    
-  }*/
   return incomingMessage;
 }
 
 void setup() {
-  // نجعل المنفذ "مدخل" كحالة افتراضية ليكون الريلاي مطفأً عند بدء التشغيل
+  // تأمين حالة المنفذ برمجياً قبل تفعيل الدوائر
+  digitalWrite(RELAY_PIN, HIGH);
   pinMode(RELAY_PIN, INPUT); 
 
-  // باقي الكود الخاص بك
   Serial.begin(9600);
   pinMode(WiFi_LED, OUTPUT);
   pinMode(MQTT_LED, OUTPUT);
+
+  // إعداد Watchdog Timer لمعمارية ESP32 v3.x
+  esp_task_wdt_config_t wdt_config = {
+    .timeout_ms = WDT_TIMEOUT * 1000,
+    .idle_core_mask = (1 << portNUM_PROCESSORS) - 1,
+    .trigger_panic = true
+  };
+  esp_task_wdt_init(&wdt_config);
+  esp_task_wdt_add(NULL);
+
   setup_wifi();
   client.setServer(mqtt_server, mqtt_port);
   client.setCallback(callback);
 }
 
 void loop() {
-  if (!client.connected()) {
+  esp_task_wdt_reset(); 
+  
+    if (!client.connected()) {
     reconnect();
   }
   client.loop();
