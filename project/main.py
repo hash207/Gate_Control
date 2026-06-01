@@ -1,60 +1,80 @@
 from kivymd.app import MDApp
-from paho.mqtt.client import Client
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.button import MDRoundFlatButton
 from kivymd.uix.label import MDLabel
+from kivy.network.urlrequest import UrlRequest
+import json
 
-def callback(client, userdata, message):
-    payload = message.payload.decode()
-    print(f"Received message: {payload} on topic {message.topic}")
-    if payload.strip().lower() == "success":
-        app = MDApp.get_running_app()
-        if app is not None and hasattr(app, "feedback_label"):
-            app.feedback_label.text = "Gate toggled successfully!"
-
-client = Client()
-client.connect("broker.emqx.io", 1883)
-client.subscribe("relay/feedback")
-client.on_message = callback
-client.loop_start()
+# تذكر تغيير الرابط إلى مسار الـ API الجديد /api/control
+FLASK_SERVER_URL = "https://merry-bulldog-sharing.ngrok-free.app/api/control"
 
 class EasyESPApp(MDApp):
     def build(self):
-        # Set the UI theme colors
         self.theme_cls.primary_palette = "Blue"
-        self.theme_cls.theme_style = "Light" # Can be "Dark"
+        self.theme_cls.theme_style = "Light"
 
-        # Main Screen
         screen = MDScreen()
 
-        # add a round button that toggles state
-        self.button_state = False
-        button = MDRoundFlatButton(
-            text="Toggle Gate",
-            pos_hint={"center_x": 0.5, "center_y": 0.55},
-            on_release=self.on_button_release,
-            md_bg_color=[0.6, 0.8, 1, 1],
-            text_color=[0, 0, 0, 1],
+        # زر الفتح (باللون الأخضر للتوضيح)
+        btn_open = MDRoundFlatButton(
+            text="Open Gate",
+            pos_hint={"center_x": 0.5, "center_y": 0.60},
+            on_release=lambda x: self.send_command("open"),
+            md_bg_color=[0.2, 0.8, 0.2, 1],
+            text_color=[1, 1, 1, 1],
+        )
+
+        # زر الإغلاق (باللون الأحمر للتوضيح)
+        btn_close = MDRoundFlatButton(
+            text="Close Gate",
+            pos_hint={"center_x": 0.5, "center_y": 0.45},
+            on_release=lambda x: self.send_command("close"),
+            md_bg_color=[0.8, 0.2, 0.2, 1],
+            text_color=[1, 1, 1, 1],
         )
 
         self.feedback_label = MDLabel(
-            text="",
+            text="Ready",
             halign="center",
-            pos_hint={"center_x": 0.5, "center_y": 0.35},
+            pos_hint={"center_x": 0.5, "center_y": 0.30},
             theme_text_color="Primary",
         )
 
-        screen.add_widget(button)
+        screen.add_widget(btn_open)
+        screen.add_widget(btn_close)
         screen.add_widget(self.feedback_label)
 
         return screen
 
-    def on_button_release(self, instance):
-        self.button_state = not self.button_state
-        client.publish("relay/switch", "toggle")
-        self.feedback_label.text = "Waiting for response..."
-        print(f"Button toggled to {'on' if self.button_state else 'off'}")
+    def send_command(self, command):
+        self.feedback_label.text = f"Sending '{command}' request..."
+        print(f"Button pressed, sending HTTP POST request for: {command}")
 
+        headers = {'Content-type': 'application/json', 'Accept': 'application/json'}
+        # تضمين الأمر (open/close) في جسم الطلب المرسل لـ Flask
+        req_body = json.dumps({"source": "Android App", "command": command})
+
+        UrlRequest(
+            url=FLASK_SERVER_URL,
+            req_body=req_body,
+            req_headers=headers,
+            on_success=self.on_request_success,
+            on_failure=self.on_request_failure,
+            on_error=self.on_request_error,
+            timeout=5
+        )
+
+    def on_request_success(self, request, result):
+        print(f"Success: {result}")
+        self.feedback_label.text = result.get("message", "Command successful!")
+
+    def on_request_failure(self, request, result):
+        print(f"Failure: {result}")
+        self.feedback_label.text = "Server Error! Action failed."
+
+    def on_request_error(self, request, error):
+        print(f"Error: {error}")
+        self.feedback_label.text = "Connection failed. Check Server IP."
 
 if __name__ == "__main__":
     EasyESPApp().run()
