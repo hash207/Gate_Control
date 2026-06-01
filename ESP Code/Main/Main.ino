@@ -1,16 +1,17 @@
-#include <WiFi.h>
+#include <ESP8266WiFi.h>
 #include <PubSubClient.h>
-#include <esp_task_wdt.h>
+//#include <esp_task_wdt.h>
 
 #define WDT_TIMEOUT 15
 
-const char* ssid = "HUAWEI-4gNy";
-const char* password = "csffb76673";
+const char* ssid = "Hashem's Phone";
+const char* password = "had207@2";
 const char* mqtt_server = "broker.emqx.io";
 const int mqtt_port = 1883;
 const int MQTT_LED = 0;
 const int WiFi_LED = 1;
-const int RELAY_PIN = 21;
+const int OPEN_PIN = 16;
+const int CLOSE_PIN = 5;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
@@ -25,7 +26,7 @@ void setup_wifi() {
   WiFi.begin(ssid, password);
 
   while (WiFi.status() != WL_CONNECTED) {
-    esp_task_wdt_reset(); // تصفير المؤقت أثناء الانتظار
+    //esp_task_wdt_reset(); // تصفير المؤقت أثناء الانتظار
     delay(500);
     Serial.print(".");
     digitalWrite(WiFi_LED,  !digitalRead(WiFi_LED));
@@ -41,15 +42,27 @@ void setup_wifi() {
 }
 
 void trig(String message){
-  if (message == "toggle") {
+  if (message == "open") {
       Serial.println("Triggering relay pulse (Direct Active Low)...");
       
-      pinMode(RELAY_PIN, OUTPUT);
-      digitalWrite(RELAY_PIN, LOW); 
+      pinMode(OPEN_PIN, OUTPUT);
+      digitalWrite(OPEN_PIN, LOW); 
       
       delay(500);           
       
-      pinMode(RELAY_PIN, INPUT);
+      pinMode(OPEN_PIN, INPUT);
+      
+      Serial.println("Relay pulse completed");
+  }
+  else if (message == "close") {
+      Serial.println("Triggering relay pulse (Direct Active Low)...");
+      
+      pinMode(CLOSE_PIN, OUTPUT);
+      digitalWrite(CLOSE_PIN, LOW); 
+      
+      delay(500);           
+      
+      pinMode(CLOSE_PIN, INPUT);
       
       Serial.println("Relay pulse completed");
   }
@@ -70,7 +83,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
 
 void reconnect() {
   while (!client.connected()) {
-    esp_task_wdt_reset(); // تصفير المؤقت أثناء محاولة إعادة الاتصال
+    ////esp_task_wdt_reset(); // تصفير المؤقت أثناء محاولة إعادة الاتصال
     Serial.print("Attempting MQTT connection...");
     String clientId = "ESP8266Client-";
     clientId += String(random(0xffff), HEX);
@@ -97,21 +110,23 @@ String reciev(){
 
 void setup() {
   // تأمين حالة المنفذ برمجياً قبل تفعيل الدوائر
-  digitalWrite(RELAY_PIN, HIGH);
-  pinMode(RELAY_PIN, INPUT); 
+  digitalWrite(OPEN_PIN, HIGH);
+  digitalWrite(CLOSE_PIN, HIGH);
+  pinMode(OPEN_PIN, INPUT); 
+  pinMode(CLOSE_PIN, INPUT); 
 
   Serial.begin(9600);
   pinMode(WiFi_LED, OUTPUT);
   pinMode(MQTT_LED, OUTPUT);
 
   // إعداد Watchdog Timer لمعمارية ESP32 v3.x
-  esp_task_wdt_config_t wdt_config = {
+  /*esp_task_wdt_config_t wdt_config = {
     .timeout_ms = WDT_TIMEOUT * 1000,
     .idle_core_mask = (1 << portNUM_PROCESSORS) - 1,
     .trigger_panic = true
-  };
-  esp_task_wdt_init(&wdt_config);
-  esp_task_wdt_add(NULL);
+  };*/
+  //esp_task_wdt_init(&wdt_config);
+  //esp_task_wdt_add(NULL);
 
   setup_wifi();
   client.setServer(mqtt_server, mqtt_port);
@@ -119,7 +134,7 @@ void setup() {
 }
 
 void loop() {
-  esp_task_wdt_reset(); 
+  //esp_task_wdt_reset(); 
   
     if (!client.connected()) {
     reconnect();
