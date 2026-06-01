@@ -268,32 +268,31 @@ def index():
         app.logger.error(f"Database error rendering index: {e}")
         return f"System Error: {e}. If this is your first run, the database might not be initialized properly.", 500
 
-@app.route('/api/toggle', methods=['POST'])
-def toggle_gate():
+@app.route('/api/control', methods=['POST'])
+def control_gate():
     try:
-        req_data = request.get_json() or {}
-        # Set a default source if none provided
-        source = req_data.get('source', 'API')
-        
-        # Publish MQTT Message (QoS 1 to ensure delivery)
-        mqtt_client.publish(MQTT_TOPIC, "toggle", qos=1)
-        
-        # Save a new log entry
-        new_log = Log(action="Gate Toggled", source=source)
-        db.session.add(new_log)
-        db.session.commit()
-        
-        return jsonify({
-            "status": "success", 
-            "message": "Gate toggled successfully"
-        }), 200
-        
+        # قراءة البيانات القادمة من تطبيق الهاتف
+        data = request.json
+        command = data.get('command') # نتوقع أن يكون 'open' أو 'close'
+        source = data.get('source', 'Unknown')
+
+        # التحقق من صحة الأمر
+        if command in ['open', 'close']:
+            # إرسال الأمر عبر MQTT
+            mqtt_client.publish("relay/switch", command)
+            
+            # تسجيل العملية في قاعدة البيانات
+            # تأكد من تعديل كود الإضافة ليطابق اسم جدولك في SQLAlchemy أو SQLite
+            new_log = Log(action=f"Gate {command.capitalize()}", source=source)
+            db.session.add(new_log)
+            db.session.commit()
+            
+            return jsonify({"status": "success", "message": f"Command '{command}' sent successfully!"}), 200
+        else:
+            return jsonify({"status": "error", "message": "Invalid command"}), 400
+
     except Exception as e:
-        app.logger.error(f"Error toggling gate: {e}")
-        return jsonify({
-            "status": "error",
-            "message": str(e)
-        }), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
     # Initialize Database on boot
