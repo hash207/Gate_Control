@@ -7,8 +7,8 @@ const char* mqtt_server = "broker.emqx.io";
 const int mqtt_port = 1883;
 
 // المنافذ الآمنة في ESP8266 (حسب المسميات المطبوعة على لوحة NodeMCU)
-const int CLOSE_PIN = D1;  // D1
-const int OPEN_PIN = D2;   // D2
+const int CLOSE_PIN = D0;  // D0
+const int OPEN_PIN = D1;   // D1
 const int WiFi_LED = D5;  // D5
 const int MQTT_LED = D6;  // D6
 
