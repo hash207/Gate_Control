@@ -1,0 +1,20 @@
+
+[Unit]
+Description=Gate Controller Flask Application
+After=network.target
+
+[Service]
+User=hashem-alsharif
+
+WorkingDirectory=/home/hashem-alsharif/Desktop/Hashem/My_Work/Gate_Control
+
+Environment="HOME=/home/hashem-alsharif"
+Environment="NGROK_AUTH_TOKEN1=30Xx23QBkNi4aTa5QaehjVNbHIP_pceTHYnPARXGgj3vQGET"
+
+ExecStart=/bin/bash /home/hashem-alsharif/Desktop/Hashem/My_Work/Gate_Control/run_bg.sh
+
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

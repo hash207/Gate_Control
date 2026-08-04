@@ -23,31 +23,52 @@ class Log(db.Model):
     action = db.Column(db.String(255), nullable=False)
     source = db.Column(db.String(255), nullable=False)
 
+# --- Global State Dictionary ---
+# The server will keep this updated whenever it hears from the ESP8266
+esp_state = {
+    "status": "offline", 
+    "last_feedback": "None"
+}
+
 # MQTT Configuration
 MQTT_BROKER = "broker.emqx.io"
 MQTT_PORT = 1883
 MQTT_TOPIC = "relay/switch"
 
-# Create MQTT Client (Compatible with paho-mqtt 1.x)
 mqtt_client = mqtt.Client()
 
 def on_connect(client, userdata, flags, rc):
     if rc == 0:
         app.logger.info("Connected to MQTT Broker successfully!")
+        # Subscribe to the ESP's feedback topics!
+        client.subscribe("esp8266/status")
+        client.subscribe("relay/feedback")
     else:
         app.logger.error("Failed to connect to MQTT Broker, return code %d\n", rc)
 
+def on_message(client, userdata, msg):
+    topic = msg.topic
+    payload = msg.payload.decode('utf-8')
+    
+    # Update the global state dictionary based on what the ESP sends
+    if topic == "esp8266/status":
+        esp_state["status"] = payload
+    elif topic == "relay/feedback":
+        esp_state["last_feedback"] = payload
+
 mqtt_client.on_connect = on_connect
+mqtt_client.on_message = on_message
 
 def start_mqtt():
     try:
         app.logger.info(f"Attempting to connect to MQTT broker at {MQTT_BROKER}:{MQTT_PORT}...")
         mqtt_client.connect(MQTT_BROKER, MQTT_PORT, 60)
-        mqtt_client.loop_start()  # Starts a background thread to handle network traffic
+        mqtt_client.loop_start()  
     except Exception as e:
         app.logger.error(f"MQTT Connection failed: {e}")
 
-# Modern Dark Mode HTML Template for the Web Dashboard
+
+# --- HTML Template goes here (Unchanged) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -261,48 +282,45 @@ HTML_TEMPLATE = """
 @app.route('/')
 def index():
     try:
-        # Fetch the most recent 20 logs from the database
         recent_logs = Log.query.order_by(Log.timestamp.desc()).limit(20).all()
         return render_template_string(HTML_TEMPLATE, logs=recent_logs)
     except Exception as e:
         app.logger.error(f"Database error rendering index: {e}")
-        return f"System Error: {e}. If this is your first run, the database might not be initialized properly.", 500
+        return f"System Error: {e}", 500
 
 @app.route('/api/control', methods=['POST'])
 def control_gate():
     try:
-        # قراءة البيانات القادمة من تطبيق الهاتف
         data = request.json
-        command = data.get('command') # نتوقع أن يكون 'open' أو 'close'
+        command = data.get('command')
         source = data.get('source', 'Unknown')
 
-        # التحقق من صحة الأمر
         if command in ['open', 'close']:
-            # إرسال الأمر عبر MQTT
+            # Reset the last feedback so we know when the new one arrives
+            esp_state["last_feedback"] = "waiting..."
+            
             mqtt_client.publish("relay/switch", command)
             
-            # تسجيل العملية في قاعدة البيانات
-            # تأكد من تعديل كود الإضافة ليطابق اسم جدولك في SQLAlchemy أو SQLite
             new_log = Log(action=f"Gate {command.capitalize()}", source=source)
             db.session.add(new_log)
             db.session.commit()
             
-            return jsonify({"status": "success", "message": f"Command '{command}' sent successfully!"}), 200
+            return jsonify({"status": "success", "message": f"Command '{command}' sent!"}), 200
         else:
             return jsonify({"status": "error", "message": "Invalid command"}), 400
 
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
+# --- NEW ENDPOINT FOR ANDROID APP TO POLL ---
+@app.route('/api/status', methods=['GET'])
+def get_status():
+    # Instantly returns the current memory state to the Android app
+    return jsonify(esp_state), 200
+
 if __name__ == '__main__':
-    # Initialize Database on boot
     with app.app_context():
-        # Creates 'garage.db' file and the logs table if they don't exist
         db.create_all()
         
-    # Start the MQTT network loop in a background thread
     start_mqtt()
-    
-    # Run the Flask Server
-    # use_reloader=False prevents the app.run from running twice (and starting MQTT thread twice) under debug mode
     app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False)
